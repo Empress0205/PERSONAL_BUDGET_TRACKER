@@ -13,8 +13,8 @@ urlpatterns = [
     path('add_income/', views.add_income, name='add_income'),
     path('add_expense/', views.add_expense, name='add_expense'),
     path('history/', views.history, name='history'),
-    path('profile/', views.profile, name='profile'),
-    path('about/', views.about, name='about'),  
+    path('about/', views.about, name='about'), 
+    path('export_csv/', views.export_transactions_to_csv, name='export_csv'),  # Export transactions to CSV
 ]
 
 if settings.DEBUG:

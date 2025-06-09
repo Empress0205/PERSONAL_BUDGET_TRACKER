@@ -1,17 +1,28 @@
 from django.shortcuts import render, redirect,HttpResponse
 from django.contrib.auth.models import User
-from django.core.exceptions import ValidationError
 from django.contrib.auth import authenticate, login as auth_login, logout
 import re
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate
-from .models import Transaction,UserProfile, Expense
-from .forms import TransactionForm, UserProfileForm
+from .models import Transaction, Expense
 from django.db.models import Sum
+import csv
 
+def export_transactions_to_csv(request):
+    user = request.user
+    transactions = Transaction.objects.filter(user=user)
 
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="transactions_{user.username}.csv"'
 
+    writer = csv.writer(response)
+    writer.writerow(['Date', 'Category', 'Amount', 'Type'])
+
+    for tx in transactions:
+        writer.writerow([tx.date, tx.category, tx.amount, tx.type])
+
+    return response
 
 def home(request):
     return render(request, 'budget/home.html')
@@ -80,13 +91,25 @@ def dashboard(request):
     total_income = sum([t.amount for t in transactions if t.type == 'income'])
     total_expenses = sum([t.amount for t in transactions if t.type == 'expense'])
     
+    recommendation=''
+    if total_income==0:
+        recommendation='You have no income. Please add some income to manage your budget.'
+    elif total_balance > 10000:
+        recommendation='You are in a good financial position. Consider saving or investing your surplus.'
+    
+    elif total_balance <= 10000:
+        recommendation='please consider rechecking your expenses, you are running out of balance.'
+    else:
+        recommendation='You\'re breaking even. Monitor your spending to save more.'
+
     context = {
         'total_balance': total_balance,
         'total_income': total_income,
         'total_expenses': total_expenses,
         'transactions': transactions,
+        'recommendation': recommendation
     }
-    
+
     return render(request, 'budget/dashboard.html', context)
 
 
@@ -110,13 +133,13 @@ def add_income(request):
 def add_expense(request):
     if request.method == 'POST':
         category = request.POST.get('category')
-        
+
         try:
             expense_amount = float(request.POST.get('amount'))
         except (ValueError, TypeError):
             messages.error(request, "Invalid amount.")
             return redirect('add_expense')  # Redirect to the same page if the amount is invalid
-        
+
         # Calculate the total balance of the user (Income - Expenses)
         total_income = Transaction.objects.filter(user=request.user, type='income').aggregate(Sum('amount'))['amount__sum'] or 0
         total_expenses = Transaction.objects.filter(user=request.user, type='expense').aggregate(Sum('amount'))['amount__sum'] or 0
@@ -127,13 +150,24 @@ def add_expense(request):
             messages.error(request, "You do not have enough balance to add this expense.")
             return redirect('add_expense')  # Redirect to the same page
 
-        
-        Expense.objects.create(
+        # Create and save the expense
+        expense = Expense.objects.create(
             user=request.user,
             amount=expense_amount,
             category=category,
             date=request.POST.get('date')  # Use the provided date, or you can add validation for it
         )
+        expense.save()
+
+        # Save the transaction for expense in the Transaction model
+        transaction = Transaction(
+            user=request.user,
+            amount=expense_amount,
+            date=request.POST.get('date'),
+            category=category,
+            type='expense'  # Set the type to 'expense'
+        )
+        transaction.save()
 
         # Show success message and redirect to the dashboard or another page
         messages.success(request, "Expense added successfully.")
@@ -144,31 +178,11 @@ def add_expense(request):
 
 
 
-
-
-
-    return render(request, 'budget/add_expense.html', )
-
-
 @login_required
 def history(request):
     transactions = Transaction.objects.filter(user=request.user).order_by('-date')  # Sort by most recent
     context = {'transactions': transactions}
     return render(request, 'budget/history.html', context)
-
-@login_required
-def profile(request):
-    user_profile, created = UserProfile.objects.get_or_create(user=request.user)  # Get or create the user profile
-
-    if request.method == 'POST':
-        form = UserProfileForm(request.POST, request.FILES, instance=user_profile)
-        if form.is_valid():
-            form.save()
-            return redirect('profile')  # Redirect to the same page after saving
-    else:
-        form = UserProfileForm(instance=user_profile)
-
-    return render(request, 'budget/profile.html', {'form': form, 'user_profile': user_profile})
 
 @login_required
 def logout_view(request):

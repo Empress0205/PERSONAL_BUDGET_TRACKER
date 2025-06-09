@@ -21,13 +21,7 @@ class Transaction(models.Model):
     def __str__(self):
         return f"{self.type.capitalize()} - {self.amount} - {self.date}"
     
-class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
-    bio = models.TextField(blank=True, null=True)  # Optional bio
 
-    def __str__(self):
-        return f"Profile of {self.user.username}"
     
     
 class Expense(models.Model):
